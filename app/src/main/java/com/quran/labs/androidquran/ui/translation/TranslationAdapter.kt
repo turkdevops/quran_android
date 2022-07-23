@@ -58,7 +58,7 @@ internal class TranslationAdapter(
   private val defaultClickListener = View.OnClickListener { this.handleClick(it) }
   private val defaultLongClickListener = View.OnLongClickListener { this.selectVerseRows(it) }
   private val expandClickListener = View.OnClickListener { v -> toggleExpandTafseer(v) }
-  private val expandHyperlinkClickListener = View.OnClickListener { v -> toggleExpandHyperlink(v) }
+  private val expandHyperlinkClickListener = View.OnClickListener { v -> toggleExpandTafseer(v) }
 
   fun getSelectedVersePopupPosition(): IntArray? {
     return if (highlightedStartPosition > -1) {
@@ -252,20 +252,6 @@ internal class TranslationAdapter(
     }
   }
 
-  private fun toggleExpandHyperlink(view: View) {
-    val position = recyclerView.getChildAdapterPosition(view)
-    if (position != RecyclerView.NO_POSITION) {
-      val data = data[position]
-      val what = data.ayahInfo.ayahId to data.translationIndex
-      if (expandedHyperlinks.contains(what)) {
-        expandedHyperlinks.remove(what)
-      } else {
-        expandedHyperlinks.add(what)
-      }
-      notifyItemChanged(position)
-    }
-  }
-
   override fun getItemViewType(position: Int): Int {
     return data[position].type
   }
@@ -359,6 +345,10 @@ internal class TranslationAdapter(
               }
             } else {
               holder.text.layoutDirection = View.LAYOUT_DIRECTION_INHERIT
+              val settings = QuranSettings.getInstance(context)
+              if (settings.wantDyslexicFontInTranslationView()){
+                holder.text.typeface = TypefaceManager.getDyslexicTypeface(context)
+              }
             }
 
             holder.text.movementMethod = LinkMovementMethod.getInstance()

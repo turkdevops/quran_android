@@ -1,4 +1,4 @@
-package com.quran.labs.androidquran.common.audio
+package com.quran.labs.androidquran.common.audio.model
 
 import android.os.Parcelable
 import kotlinx.parcelize.IgnoredOnParcel
@@ -10,6 +10,7 @@ data class QariItem(
   val name: String,
   val url: String,
   val path: String,
+  val hasGaplessAlternative: Boolean,
   val db: String? = null
 ) : Parcelable {
   @IgnoredOnParcel

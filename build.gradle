@@ -1,15 +1,16 @@
 buildscript {
   ext {
-    kotlinVersion = '1.7.0'
-    coroutinesVersion = '1.6.2'
+    kotlinVersion = '1.7.10'
+    coroutinesVersion = '1.6.4'
 
     daggerVersion = '2.42'
-    composeVersion = '1.2.0-beta03'
-    composeCompilerVersion = '1.2.0-dev-k1.7.0-53370d83bb1'
+    composeVersion = '1.2.0-rc03'
+    composeCompilerVersion = '1.2.1-dev-k1.7.10-27cf0868d10'
+    material3Version = '1.0.0-alpha14'
 
     androidxMediaVersion = '1.6.0'
-    androidxAnnotationVersion = '1.3.0'
-    androidxFragmentVersion = '1.4.1'
+    androidxAnnotationVersion = '1.4.0'
+    androidxFragmentVersion = '1.5.0'
     androidxPreferencesVersion = '1.2.0'
     androidxAppcompatVersion = '1.4.2'
     androidxLocalBroadcastVersion = '1.1.0'
@@ -23,8 +24,8 @@ buildscript {
 
     anvilVersion = '2.4.1'
     moshiVersion = '1.13.0'
-    okhttpVersion = '4.9.3'
-    okioVersion = '3.1.0'
+    okhttpVersion = '4.10.0'
+    okioVersion = '3.2.0'
     retrofitVersion = '2.9.0'
     sqldelightVersion = '1.5.3'
 
@@ -56,10 +57,10 @@ buildscript {
 
   dependencies {
     classpath "com.android.tools.build:gradle:7.2.1"
-    classpath "com.google.firebase:firebase-crashlytics-gradle:2.9.0"
+    classpath "com.google.firebase:firebase-crashlytics-gradle:2.9.1"
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
     classpath "net.ltgt.gradle:gradle-errorprone-plugin:2.0.2"
-    classpath "com.google.gms:google-services:4.3.10"
+    classpath "com.google.gms:google-services:4.3.13"
     classpath "com.squareup.sqldelight:gradle-plugin:$sqldelightVersion"
     classpath "com.squareup.anvil:gradle-plugin:$anvilVersion"
   }
