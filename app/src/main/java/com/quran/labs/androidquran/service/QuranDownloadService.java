@@ -13,7 +13,9 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.Parcelable;
 import android.os.StatFs;
+
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
 import com.quran.data.core.QuranInfo;
 import com.quran.data.model.SuraAyah;
 import com.quran.labs.androidquran.QuranApplication;
@@ -26,13 +28,16 @@ import com.quran.labs.androidquran.util.QuranUtils;
 import com.quran.labs.androidquran.util.UrlUtil;
 import com.quran.labs.androidquran.util.ZipUtils;
 import com.quran.mobile.common.download.DownloadInfoStreams;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import javax.inject.Inject;
+
 import okhttp3.Call;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;

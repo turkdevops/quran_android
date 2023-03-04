@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.annotation.VisibleForTesting
 import com.quran.data.core.QuranInfo
 import com.quran.data.model.SuraAyah
+import com.quran.data.model.audio.Qari
 import com.quran.labs.androidquran.common.audio.model.QariItem
 import com.quran.labs.androidquran.common.audio.util.QariUtil
 import com.quran.labs.androidquran.service.AudioService
@@ -60,6 +61,14 @@ class AudioUtils @Inject constructor(
     return file.isDirectory && file.list()?.isNotEmpty() ?: false
   }
 
+  fun getQariUrl(qari: Qari): String {
+    return qari.url + if (qari.isGapless) {
+      "%03d$AUDIO_EXTENSION"
+    } else {
+      "%03d%03d$AUDIO_EXTENSION"
+    }
+  }
+
   fun getQariUrl(item: QariItem): String {
     return item.url + if (item.isGapless) {
       "%03d$AUDIO_EXTENSION"
@@ -100,7 +109,7 @@ class AudioUtils @Inject constructor(
     mode: Int,
     isDualPageVisible: Boolean
   ): SuraAyah? {
-    val page =
+    val potentialPage =
       if (isDualPageVisible &&
         mode == LookAheadAmount.PAGE &&
         currentPage % 2 == 1
@@ -112,13 +121,21 @@ class AudioUtils @Inject constructor(
         currentPage
       }
 
+    // in cases like Shermerly in dual screen where the last page is empty, use
+    // the page prior to the last page.
+    val page = if (isDualPageVisible && potentialPage == (totalPages + 1)) {
+      totalPages
+    } else {
+      potentialPage
+    }
+
     var pageLastSura = 114
     var pageLastAyah = 6
+
     // page < 0 - intentional, because nextPageAyah looks up the ayah on the next page
     if (page > totalPages || page < 0) {
       return null
     }
-
 
     if (mode == LookAheadAmount.SURA) {
       val sura = startAyah.sura

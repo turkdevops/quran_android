@@ -17,16 +17,7 @@ import kotlinx.coroutines.flow.map
 class QariListPresenter @Inject constructor(private val qariDownloadInfoManager: QariDownloadInfoManager) {
 
   fun qariList(start: SuraAyah, end: SuraAyah, qariTranslationLambda: ((Qari) -> QariItem)): Flow<List<QariUiModel>> {
-    return qariDownloadInfoManager.downloadedQariInfo().map { list ->
-        list.filter { qariDownloadInfo ->
-          val qari = qariDownloadInfo.qari
-          val gappedItem = qariDownloadInfo as? QariDownloadInfo.GappedQariDownloadInfo
-          qari.isGapless ||
-              (qari.hasGaplessAlternative && qariDownloadInfo.fullyDownloadedSuras.isEmpty() &&
-                  (gappedItem?.partiallyDownloadedSuras?.isEmpty() ?: false)
-              )
-        }
-      }
+    return qariDownloadInfoManager.downloadQariInfoFilteringNonDownloadedGappedQaris()
       .map { unsortedQariList ->
         val readyToPlay = unsortedQariList.filter { it.isRangeDownloaded(start, end) }
           .toSortedQariItemList(qariTranslationLambda)

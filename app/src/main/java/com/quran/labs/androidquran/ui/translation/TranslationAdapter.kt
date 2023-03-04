@@ -2,10 +2,14 @@ package com.quran.labs.androidquran.ui.translation
 
 import android.content.Context
 import android.graphics.Color
+import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.method.LinkMovementMethod
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
+import android.text.style.TextAppearanceSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -14,6 +18,7 @@ import androidx.annotation.LayoutRes
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.quran.common.search.SearchTextUtil
 import com.quran.data.model.SuraAyah
 import com.quran.data.model.highlight.HighlightType
 import com.quran.labs.androidquran.R
@@ -24,7 +29,6 @@ import com.quran.labs.androidquran.ui.helpers.HighlightTypes
 import com.quran.labs.androidquran.ui.helpers.UthmaniSpan
 import com.quran.labs.androidquran.ui.util.TypefaceManager
 import com.quran.labs.androidquran.util.QuranSettings
-import com.quran.labs.androidquran.util.QuranUtils
 import com.quran.labs.androidquran.view.AyahNumberView
 import com.quran.labs.androidquran.view.DividerView
 import kotlin.math.ln1p
@@ -34,13 +38,16 @@ internal class TranslationAdapter(
   private val context: Context,
   private val recyclerView: RecyclerView,
   private val onClickListener: View.OnClickListener,
-  private val onVerseSelectedListener: OnVerseSelectedListener
+  private val onVerseSelectedListener: OnVerseSelectedListener,
+  private val onJumpToVerseListener: OnJumpToAyahListener
 ) : RecyclerView.Adapter<TranslationAdapter.RowViewHolder>() {
   private val inflater: LayoutInflater = LayoutInflater.from(context)
   private val data: MutableList<TranslationViewRow> = mutableListOf()
 
   private var fontSize: Int = 0
   private var textColor: Int = 0
+  private var footnoteColor: Int = 0
+  private var inlineAyahColor: Int = 0
   private var dividerColor: Int = 0
   private var arabicTextColor: Int = 0
   private var suraHeaderColor: Int = 0
@@ -58,7 +65,7 @@ internal class TranslationAdapter(
   private val defaultClickListener = View.OnClickListener { this.handleClick(it) }
   private val defaultLongClickListener = View.OnLongClickListener { this.selectVerseRows(it) }
   private val expandClickListener = View.OnClickListener { v -> toggleExpandTafseer(v) }
-  private val expandHyperlinkClickListener = View.OnClickListener { v -> toggleExpandTafseer(v) }
+  private val expandHyperlinkClickListener = View.OnClickListener { v -> toggleTafseerJump(v) }
 
   fun getSelectedVersePopupPosition(): IntArray? {
     return if (highlightedStartPosition > -1) {
@@ -198,17 +205,20 @@ internal class TranslationAdapter(
       val textBrightness = min(adjustedBrightness.toFloat(), 255f).toInt()
 
       this.textColor = Color.rgb(textBrightness, textBrightness, textBrightness)
+      this.footnoteColor = ContextCompat.getColor(context, R.color.translation_footnote_color)
       this.arabicTextColor = textColor
       this.dividerColor = textColor
       this.suraHeaderColor = ContextCompat.getColor(context, R.color.translation_sura_header_night)
       this.ayahSelectionColor = ContextCompat.getColor(context, R.color.translation_ayah_selected_color_night)
     } else {
       this.textColor = ContextCompat.getColor(context, R.color.translation_text_color)
+      this.footnoteColor = ContextCompat.getColor(context, R.color.translation_footnote_color)
       this.dividerColor = ContextCompat.getColor(context, R.color.translation_divider_color)
       this.arabicTextColor = Color.BLACK
       this.suraHeaderColor = ContextCompat.getColor(context, R.color.translation_sura_header)
       this.ayahSelectionColor = ContextCompat.getColor(context, R.color.translation_ayah_selected_color)
     }
+    this.inlineAyahColor = ContextCompat.getColor(context, R.color.translation_translator_color)
 
     if (this.data.isNotEmpty()) {
       notifyDataSetChanged()
@@ -249,6 +259,24 @@ internal class TranslationAdapter(
         expandedTafseerAyahs.add(what)
       }
       notifyItemChanged(position)
+    }
+  }
+
+  private fun toggleTafseerJump(view: View) {
+    val position = recyclerView.getChildAdapterPosition(view)
+    if (position != RecyclerView.NO_POSITION) {
+      val item = data[position]
+      val targetAyah = item.link
+      val targetPage = item.linkPage
+      if (targetAyah != null && targetPage != null) {
+        val match = data.indexOfFirst { it.ayahInfo.asSuraAyah() == targetAyah }
+        if (match > -1) {
+          recyclerView.smoothScrollToPosition(match)
+        } else {
+          // it's not on this page...
+          onJumpToVerseListener.onJumpToAyah(targetAyah, targetPage)
+        }
+      }
     }
   }
 
@@ -312,18 +340,31 @@ internal class TranslationAdapter(
                 holder.text.setOnClickListener(expandHyperlinkClickListener)
               }
 
+              val spannable = SpannableString(row.data)
+              row.ayat.forEach { range ->
+                val span = ForegroundColorSpan(inlineAyahColor)
+                spannable.setSpan(span, range.first, range.last + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              }
+
+              row.footnotes.forEach { range ->
+                val span = RelativeSizeSpan(0.7f)
+                val colorSpan = ForegroundColorSpan(footnoteColor)
+                spannable.setSpan(span, range.first, range.last + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                spannable.setSpan(colorSpan, range.first, range.last + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+              }
+
               when {
                 row.link != null && !expandHyperlink -> getAyahLink(row.link)
                 length > MAX_TAFSEER_LENGTH ->
-                  truncateTextIfNeeded(rowText, row.ayahInfo.ayahId, row.translationIndex)
-                else -> rowText
+                  truncateTextIfNeeded(spannable, row.ayahInfo.ayahId, row.translationIndex)
+                else -> spannable
               }
             }
 
             // determine text directionality
             val isRtl = when {
               row.isArabic -> true
-              text != null -> QuranUtils.isRtl(text.toString())
+              text != null -> SearchTextUtil.isRtl(text.toString())
               else -> false
             }
 
@@ -331,15 +372,11 @@ internal class TranslationAdapter(
             holder.text.typeface = null
 
             if (isRtl) {
-              // rtl tafseer, style it (SDK is always >= 21 now)
+              // rtl tafseer, style it
               holder.text.layoutDirection = View.LAYOUT_DIRECTION_RTL
 
-              // allow the tafseer font for api 19 because it's fine there and
-              // is much better than the stock font (this is more lenient than
-              // the api 21 restriction on the hafs font). only allow this for
-              // Arabic though since the Arabic font isn't compatible with other
-              // RTL languages that share some Arabic characters.
-              // SDK is always >= 21 now
+              // only allow this for Arabic though since the Arabic font isn't compatible
+              // with other RTL languages that share some Arabic characters.
               if (row.isArabic) {
                 holder.text.typeface = TypefaceManager.getTafseerTypeface(context)
               }
@@ -454,6 +491,10 @@ internal class TranslationAdapter(
 
   internal interface OnVerseSelectedListener {
     fun onVerseSelected(ayahInfo: QuranAyahInfo)
+  }
+
+  internal interface OnJumpToAyahListener {
+    fun onJumpToAyah(target: SuraAyah, page: Int)
   }
 
   companion object {
