@@ -5,6 +5,7 @@ import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Color;
+import android.os.Build;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -16,10 +17,12 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Space;
 import android.widget.TextView;
+
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.StringRes;
 import androidx.core.view.ViewCompat;
+
 import com.quran.data.model.audio.Qari;
 import com.quran.labs.androidquran.R;
 import com.quran.labs.androidquran.common.audio.model.QariItem;
@@ -51,6 +54,10 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
 
   private Qari currentQari;
   private int currentRepeat = 0;
+  private final int defaultSpeedIndex = 2;
+  private int currentSpeedIndex = defaultSpeedIndex;
+  private final float[] speeds = { 0.5f, 0.75f, 1f, 1.25f, 1.5f};
+  private float currentSpeed = speeds[currentSpeedIndex];
   @DrawableRes private int itemBackground;
   private final boolean isRtl;
   private boolean isDualPageMode;
@@ -59,9 +66,11 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
   private boolean haveCriticalError = false;
 
   private TextView qariView;
+  private ImageView dropdownIconView;
   private TextView progressText;
   private ProgressBar progressBar;
   private final RepeatButton repeatButton;
+  private final RepeatButton speedButton;
   private AudioBarListener audioBarListener;
   private AudioBarRecitationListener audioBarRecitationListener;
 
@@ -71,6 +80,7 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
     void onNextPressed();
     void onPreviousPressed();
     void onStopPressed();
+    void setPlaybackSpeed(float speed);
     void onCancelPressed(boolean stopDownload);
     void setRepeatCount(int repeatCount);
     void onAcceptPressed();
@@ -101,6 +111,7 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
 
     this.context = context;
     repeatButton = new RepeatButton(context);
+    speedButton = new RepeatButton(context);
     Resources resources = getResources();
     buttonWidth = resources.getDimensionPixelSize(
         R.dimen.audiobar_button_width);
@@ -185,6 +196,16 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
     return QariItem.Companion.fromQari(context, currentQari);
   }
 
+  public void setSpeed(float speed) {
+    for (int i = 0; i < speeds.length; i++) {
+      if (speeds[i] == speed) {
+        currentSpeedIndex = i;
+        updateSpeedButtonText();
+        return;
+      }
+    }
+  }
+
   public void setProgress(int progress) {
     if (hasErrorText) {
       progressText.setText(R.string.downloading_title);
@@ -240,8 +261,9 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
 
   private void updateButton() {
     final TextView currentQariView = qariView;
-    if (currentQariView != null) {
-      currentQariView.setText(currentQari.getNameResource());
+    final Qari qari = currentQari;
+    if (currentQariView != null && qari != null) {
+      currentQariView.setText(qari.getNameResource());
     }
   }
 
@@ -254,24 +276,33 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
       qariView.setBackgroundResource(itemBackground);
       qariView.setPadding(buttonPadding, 0, buttonPadding, 0);
     }
-    qariView.setText(currentQari.getNameResource());
 
-    // in RTL, because this is currently an LTR LinearLayout, this shows
-    // the spinner and then the play button, so we can't match parent. this
-    // is less efficient than the LTR version. this should be fixed by making
-    // the parent a vanilla LinearLayout and setting the direction.
-    final LayoutParams params;
-    if (isRtl || isRecitationEnabled) {
-      params = new LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT);
-      params.weight = 1;
-    } else {
-      params = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+    if (dropdownIconView == null) {
+      dropdownIconView = new ImageView(context);
+      dropdownIconView.setImageResource(R.drawable.ic_action_expand);
+      dropdownIconView.setBackgroundResource(itemBackground);
+      dropdownIconView.setOnClickListener(view -> audioBarListener.onShowQariList());
+      dropdownIconView.setPadding(buttonPadding, 0, buttonPadding, 0);
     }
+    updateButton();
+
+    final ViewGroup.LayoutParams dropdownParams =
+        new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        );
+
+    final LayoutParams params = new LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT);
+    params.weight = 1;
 
     if (isRtl) {
       ViewCompat.setLayoutDirection(qariView, ViewCompat.LAYOUT_DIRECTION_RTL);
+      addView(dropdownIconView, dropdownParams);
     }
     addView(qariView, params);
+    if (!isRtl) {
+      addView(dropdownIconView, dropdownParams);
+    }
   }
 
   private void showPromptForDownloadMode() {
@@ -450,7 +481,11 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
     addButton(R.drawable.ic_next, withWeight);
 
     addButton(repeatButton, R.drawable.ic_repeat, withWeight);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
+      addButton(speedButton, R.drawable.ic_speed, withWeight);
+    }
     updateRepeatButtonText();
+    updateSpeedButtonText();
 
     addButton(R.drawable.ic_action_settings, withWeight);
   }
@@ -500,8 +535,14 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
     updateRepeatButtonText();
   }
 
+  private void updatePlaybackSpeed() {
+    currentSpeedIndex = (currentSpeedIndex + 1) % speeds.length;
+    currentSpeed = speeds[currentSpeedIndex];
+    updateSpeedButtonText();
+  }
+
   private void updateRepeatButtonText() {
-    String str;
+    final String str;
     if (currentRepeat == -1) {
       str = context.getString(R.string.infinity);
     } else if (currentRepeat == 0) {
@@ -510,6 +551,22 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
       str = String.valueOf(currentRepeat);
     }
     repeatButton.setText(str);
+  }
+
+  private void updateSpeedButtonText(){
+    currentSpeed = speeds[currentSpeedIndex];
+    final String str;
+    if (currentSpeedIndex == 2) {
+      str = "";
+    } else {
+      str = String.valueOf(currentSpeed);
+    }
+
+    post(() -> {
+      if (speedButton != null) {
+        speedButton.setText(str);
+      }
+    });
   }
 
   public void setRepeatCount(int repeatCount) {
@@ -559,6 +616,9 @@ public class AudioStatusBar extends LeftToRightLinearLayout {
           }
         } else if (tag == R.drawable.ic_next) {
           audioBarListener.onNextPressed();
+        } else if (tag == R.drawable.ic_speed) {
+          updatePlaybackSpeed();
+          audioBarListener.setPlaybackSpeed(currentSpeed);
         } else if (tag == R.drawable.ic_previous) {
           audioBarListener.onPreviousPressed();
         } else if (tag == R.drawable.ic_repeat) {

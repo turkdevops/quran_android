@@ -1,5 +1,11 @@
 package com.quran.labs.androidquran.view;
 
+import static com.quran.data.model.highlight.HighlightType.Mode.BACKGROUND;
+import static com.quran.data.model.highlight.HighlightType.Mode.COLOR;
+import static com.quran.data.model.highlight.HighlightType.Mode.HIDE;
+import static com.quran.data.model.highlight.HighlightType.Mode.HIGHLIGHT;
+import static com.quran.data.model.highlight.HighlightType.Mode.UNDERLINE;
+
 import android.animation.Animator;
 import android.animation.ValueAnimator;
 import android.content.Context;
@@ -14,6 +20,11 @@ import android.graphics.Paint.FontMetrics;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.widget.AppCompatImageView;
+import androidx.core.content.ContextCompat;
+import androidx.core.view.DisplayCutoutCompat;
 
 import com.quran.data.model.highlight.HighlightType;
 import com.quran.labs.androidquran.R;
@@ -37,18 +48,7 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import androidx.annotation.NonNull;
-import androidx.appcompat.widget.AppCompatImageView;
-import androidx.core.content.ContextCompat;
-import androidx.core.view.DisplayCutoutCompat;
 import dev.chrisbanes.insetter.Insetter;
-
-import static com.quran.data.model.highlight.HighlightType.Mode.BACKGROUND;
-import static com.quran.data.model.highlight.HighlightType.Mode.COLOR;
-import static com.quran.data.model.highlight.HighlightType.Mode.HIDE;
-import static com.quran.data.model.highlight.HighlightType.Mode.HIGHLIGHT;
-import static com.quran.data.model.highlight.HighlightType.Mode.UNDERLINE;
-import java.lang.Math;
 
 public class HighlightingImageView extends AppCompatImageView {
   // for debugging / visualizing glyph bounds:
@@ -276,6 +276,10 @@ public class HighlightingImageView extends AppCompatImageView {
 
     final TransitionAyahHighlight transitionHighlight = new TransitionAyahHighlight(sourceHighlight, destinationHighlight);
 
+    if (startingBounds == null) {
+      startingBounds = new ArrayList<>();
+    }
+
     // yes we make copies, because normalizing the bounds will change them
     List<AyahBounds> sourceBounds = new ArrayList<>(startingBounds);
 
@@ -385,9 +389,10 @@ public class HighlightingImageView extends AppCompatImageView {
     String juzText = null;
     String pageText = null;
     String rub3Text = null;
+    String manzilText = null;
   }
 
-  public void setOverlayText(Context context, String suraText, String juzText, String pageText, String rub3Text) {
+  public void setOverlayText(String suraText, String juzText, String pageText, String rub3Text, String manzilText) {
     // Calculate page bounding rect from ayahinfo db
     if (pageBounds == null) {
       return;
@@ -398,6 +403,7 @@ public class HighlightingImageView extends AppCompatImageView {
     overlayParams.juzText = juzText;
     overlayParams.pageText = pageText;
     overlayParams.rub3Text = rub3Text;
+    overlayParams.manzilText = manzilText;
     overlayParams.paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DEV_KERN_TEXT_FLAG);
     overlayParams.paint.setTextSize(fontSize);
 //    if (juzText.contains("ج")) {
@@ -475,7 +481,7 @@ public class HighlightingImageView extends AppCompatImageView {
         overlayParams.paint);
     // Merge the current rub3 text with the juz' text
     overlayParams.paint.setTextAlign(Align.RIGHT);
-    canvas.drawText(overlayParams.juzText + overlayParams.rub3Text,
+    canvas.drawText(overlayParams.juzText + overlayParams.rub3Text + overlayParams.manzilText,
         (getWidth() - overlayParams.offsetX) - horizontalSafeOffset,
         overlayParams.topBaseline + topSafeOffset,
         overlayParams.paint);

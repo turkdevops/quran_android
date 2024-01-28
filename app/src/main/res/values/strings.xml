@@ -283,7 +283,8 @@
 
   <string name="canceling">Canceling&#8230;</string>
   <string name="juz2_description">Juz\' %1$s</string>
-  <string name="comma_with_spaces" translatable="false"> , </string>
+  <string name="manzil_description">Manzil %1$s</string>
+  <string name="comma" translatable="false">,</string>
   <string name="page_description">Page %1$s, Juz\' %2$s</string>
   <string name="highlighting_database">Required Files</string>
   <string name="timing_database">Required Files</string>
@@ -308,6 +309,9 @@
   <string name="download_retry">Retry</string>
   <string name="download_cancel">Cancel</string>
   <string name="download_extra_data">We need to download one or two small files to support sharing and translation. Download now?</string>
+
+  <!-- post notification dialog -->
+  <string name="post_notification_permission">Allow Quran for Android to post notifications? This is only used to give updates on download status, or to warn when audio files are automatically updated.</string>
 
   <!-- translation database stuff -->
   <string name="remove_dlg_title">Remove Translation?</string>
@@ -342,6 +346,7 @@
   <string name="pause">Pause</string>
   <string name="stop">Stop</string>
   <string name="next">Next</string>
+  <string name="playback_speed">Playback Speed:</string>
 
   <string-array name="repeatValues">
     <item>1 time</item>

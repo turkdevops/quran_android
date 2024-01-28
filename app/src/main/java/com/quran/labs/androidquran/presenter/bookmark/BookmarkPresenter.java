@@ -13,7 +13,6 @@ import com.quran.data.model.bookmark.BookmarkData;
 import com.quran.data.model.bookmark.RecentPage;
 import com.quran.data.model.bookmark.Tag;
 import com.quran.labs.androidquran.dao.bookmark.BookmarkResult;
-import com.quran.labs.androidquran.data.Constants;
 import com.quran.labs.androidquran.model.bookmark.BookmarkModel;
 import com.quran.labs.androidquran.model.translation.ArabicDatabaseUtils;
 import com.quran.labs.androidquran.presenter.Presenter;
@@ -22,6 +21,7 @@ import com.quran.labs.androidquran.ui.helpers.QuranRow;
 import com.quran.labs.androidquran.ui.helpers.QuranRowFactory;
 import com.quran.labs.androidquran.util.QuranSettings;
 import com.quran.labs.androidquran.util.QuranUtils;
+import com.quran.mobile.di.qualifier.ApplicationContext;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -48,6 +48,7 @@ public class BookmarkPresenter implements Presenter<BookmarksFragment> {
   private final BookmarkModel bookmarkModel;
   private final QuranSettings quranSettings;
   private final QuranRowFactory quranRowFactory;
+  private final QuranInfo quranInfo;
 
   private int sortOrder;
   private boolean groupByTags;
@@ -61,10 +62,9 @@ public class BookmarkPresenter implements Presenter<BookmarksFragment> {
   private DisposableSingleObserver<BookmarkResult> pendingRemoval;
   private List<QuranRow> itemsToRemove;
 
-  private final int totalPages;
 
   @Inject
-  BookmarkPresenter(Context appContext,
+  BookmarkPresenter(@ApplicationContext Context appContext,
                     BookmarkModel bookmarkModel,
                     QuranSettings quranSettings,
                     ArabicDatabaseUtils arabicDatabaseUtils,
@@ -75,12 +75,12 @@ public class BookmarkPresenter implements Presenter<BookmarksFragment> {
     this.bookmarkModel = bookmarkModel;
     this.arabicDatabaseUtils = arabicDatabaseUtils;
     this.quranRowFactory = quranRowFactory;
+    this.quranInfo = quranInfo;
 
     sortOrder = quranSettings.getBookmarksSortOrder();
     groupByTags = quranSettings.getBookmarksGroupedByTags();
     showRecents = quranSettings.getShowRecents();
     showDate = quranSettings.getShowDate();
-    totalPages = quranInfo.getNumberOfPages();
     subscribeToChanges();
   }
 
@@ -323,7 +323,7 @@ public class BookmarkPresenter implements Presenter<BookmarksFragment> {
       rows.add(0, quranRowFactory.fromRecentPageHeader(appContext, size));
       for (int i = 0; i < size; i++) {
         int page = recentPages.get(i).getPage();
-        if (page < Constants.PAGES_FIRST || page > totalPages) {
+        if (!quranInfo.isValidPage(page)) {
           page = 1;
         }
         rows.add(i + 1, quranRowFactory.fromCurrentPage(appContext, page, recentPages.get(i).getTimestamp()));

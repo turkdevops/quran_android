@@ -32,7 +32,7 @@ class AudioManagerActivity : ComponentActivity() {
 
     val injector = (application as? QuranApplicationComponentProvider)
       ?.provideQuranApplicationComponent() as? DownloadManagerComponentInterface
-    injector?.downloadManagerComponentBuilder()?.build()?.inject(this)
+    injector?.downloadManagerComponentFactory()?.generate()?.inject(this)
 
     val downloadedShuyookhFlow =
       audioManagerPresenter.downloadedShuyookh { QariItem.fromQari(this, it) }
@@ -46,8 +46,6 @@ class AudioManagerActivity : ComponentActivity() {
         ) {
           DownloadManagerToolbar(
             title = stringResource(R.string.audio_manager),
-            backgroundColor = MaterialTheme.colorScheme.primary,
-            tintColor = MaterialTheme.colorScheme.onPrimary,
             onBackPressed = { finish() }
           )
 

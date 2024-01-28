@@ -89,6 +89,15 @@ class QuranDisplayData @Inject constructor(private val quranInfo: QuranInfo): Qu
       QuranUtils.getLocalizedNumber(context, quranInfo.getJuzForDisplayFromPage(page)))
   }
 
+  fun getManzilForPage(context: Context, page: Int): String {
+    val manzil = quranInfo.manzilForPage(page)
+    return if (manzil > 0) {
+      context.getString(R.string.comma) + ' ' + context.getString(R.string.manzil_description, QuranUtils.getLocalizedNumber(context, manzil))
+    } else {
+      ""
+    }
+  }
+
   fun getSuraAyahString(context: Context, sura: Int, ayah: Int): String {
     return getSuraAyahString(context, sura, ayah, R.string.sura_ayah_notification_str)
   }
@@ -148,7 +157,7 @@ class QuranDisplayData @Inject constructor(private val quranInfo: QuranInfo): Qu
   }
 
   fun safelyGetSuraOnPage(page: Int): Int {
-    return if (page < Constants.PAGES_FIRST || page > quranInfo.numberOfPages) {
+    return if (!quranInfo.isValidPage(page)) {
       Timber.e(IllegalArgumentException("safelyGetSuraOnPage with page: $page"))
       quranInfo.getSuraOnPage(1)
     } else {

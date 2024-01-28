@@ -5,12 +5,12 @@ import android.content.Intent
 import com.quran.data.model.SuraAyah
 import com.quran.labs.androidquran.R
 import com.quran.labs.androidquran.common.audio.model.QariItem
-import com.quran.labs.androidquran.dao.audio.AudioPathInfo
-import com.quran.labs.androidquran.dao.audio.AudioRequest
+import com.quran.labs.androidquran.common.audio.model.playback.AudioPathInfo
+import com.quran.labs.androidquran.common.audio.model.playback.AudioRequest
 import com.quran.labs.androidquran.data.QuranDisplayData
 import com.quran.labs.androidquran.presenter.Presenter
 import com.quran.labs.androidquran.service.QuranDownloadService
-import com.quran.labs.androidquran.common.audio.model.AudioDownloadMetadata
+import com.quran.labs.androidquran.common.audio.model.download.AudioDownloadMetadata
 import com.quran.labs.androidquran.service.util.ServiceIntentHelper
 import com.quran.labs.androidquran.ui.PagerActivity
 import com.quran.labs.androidquran.util.AudioUtils
@@ -32,6 +32,7 @@ constructor(private val quranDisplayData: QuranDisplayData,
            verseRepeat: Int,
            rangeRepeat: Int,
            enforceRange: Boolean,
+           playbackSpeed: Float,
            shouldStream: Boolean) {
     val audioPathInfo = getLocalAudioPathInfo(qari)
     if (audioPathInfo != null) {
@@ -62,17 +63,25 @@ constructor(private val quranDisplayData: QuranDisplayData,
       }
 
       val audioRequest = AudioRequest(
-          actualStart, actualEnd, qari, verseRepeat, rangeRepeat, enforceRange, stream, audioPath)
+          actualStart, actualEnd, qari, verseRepeat, rangeRepeat, enforceRange, playbackSpeed, stream, audioPath)
       play(audioRequest)
     }
   }
 
-  fun play(audioRequest: AudioRequest) {
+  private fun play(audioRequest: AudioRequest) {
     lastAudioRequest = audioRequest
+    proceedWithAudioRequest(audioRequest)
+  }
+
+  private fun proceedWithAudioRequest(audioRequest: AudioRequest, bypassChecks: Boolean = false) {
     pagerActivity?.let {
       val downloadIntent = getDownloadIntent(it, audioRequest)
       if (downloadIntent != null) {
-        it.handleRequiredDownload(downloadIntent)
+        if (bypassChecks) {
+          it.proceedWithDownload(downloadIntent)
+        } else {
+          it.handleRequiredDownload(downloadIntent)
+        }
       } else {
         // play the audio
         it.handlePlayback(audioRequest)
@@ -82,6 +91,12 @@ constructor(private val quranDisplayData: QuranDisplayData,
 
   fun onDownloadPermissionGranted() {
     lastAudioRequest?.let { play(it) }
+  }
+
+  fun onPostNotificationsPermissionResponse(granted: Boolean) {
+    lastAudioRequest?.let { audioRequest ->
+      proceedWithAudioRequest(audioRequest, true)
+    }
   }
 
   fun onDownloadSuccess() {

@@ -1,5 +1,6 @@
 package com.quran.labs.androidquran.ui
 
+import android.app.BackgroundServiceStartNotAllowedException
 import android.app.SearchManager
 import android.content.ComponentName
 import android.content.Context
@@ -47,11 +48,10 @@ import com.quran.labs.androidquran.util.QuranSettings
 import com.quran.labs.androidquran.util.QuranUtils
 import com.quran.labs.androidquran.view.SlidingTabLayout
 import com.quran.mobile.di.ExtraScreenProvider
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Observable
-import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.disposables.CompositeDisposable
-import timber.log.Timber
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import javax.inject.Inject
 import kotlin.math.abs
@@ -101,8 +101,8 @@ class QuranActivity : AppCompatActivity(),
 
     super.onCreate(savedInstanceState)
     quranApp.applicationComponent
-        .quranActivityComponentBuilder()
-        .build()
+        .quranActivityComponentFactory()
+        .generate()
         .inject(this)
 
     setContentView(R.layout.quran_index)
@@ -161,9 +161,14 @@ class QuranActivity : AppCompatActivity(),
           Completable.timer(500, MILLISECONDS)
               .observeOn(AndroidSchedulers.mainThread())
               .subscribe {
-                startService(
+                try {
+                  startService(
                     audioUtils.getAudioIntent(this@QuranActivity, AudioService.ACTION_STOP)
-                )
+                  )
+                } catch (illegalStateException: IllegalStateException) {
+                  // do nothing, we might be in the background
+                  // onPause should have stopped us from needing this, but it sometimes happens
+                }
               }
       )
     }
@@ -290,13 +295,8 @@ class QuranActivity : AppCompatActivity(),
 
   private fun updateTranslationsListAsNeeded() {
     if (!updatedTranslations) {
-      val time = settings.lastUpdatedTranslationDate
-      Timber.d("checking whether we should update translations..")
-      if (System.currentTimeMillis() - time > Constants.TRANSLATION_REFRESH_TIME) {
-        Timber.d("updating translations list...")
-        updatedTranslations = true
-        translationManagerPresenter.checkForUpdates()
-      }
+      translationManagerPresenter.checkForUpdates()
+      updatedTranslations = true
     }
   }
 

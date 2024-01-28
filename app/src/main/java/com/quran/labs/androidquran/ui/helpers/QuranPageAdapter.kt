@@ -21,7 +21,7 @@ class QuranPageAdapter(
   private val pageViewFactory: PageViewFactory? = null
 ) : FragmentStatePagerAdapter(fm, if (isDualPages) "dualPages" else "singlePage") {
   private var pageMode: PageMode = makePageMode()
-  private val totalPages: Int = quranInfo.numberOfPages
+  private val totalPages: Int = quranInfo.numberOfPagesConsideringSkipped
   private val totalPagesDual: Int = totalPages / 2 + (totalPages % 2)
 
   fun setTranslationMode() {
@@ -117,15 +117,6 @@ class QuranPageAdapter(
     } else if (f is TabletFragment) {
       f.cleanup()
     }
-  }
-
-  fun getFragmentIfExistsForPage(page: Int): QuranPage? {
-    if (page < Constants.PAGES_FIRST || totalPages < page) {
-      return null
-    }
-    val position = quranInfo.getPositionFromPage(page, isDualPagesVisible)
-    val fragment = getFragmentIfExists(position)
-    return if (fragment is QuranPage && fragment.isAdded) fragment else null
   }
 
   private val isDualPagesVisible: Boolean

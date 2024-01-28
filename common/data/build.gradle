@@ -1,18 +1,20 @@
 plugins {
   id 'quran.android.library'
-  id 'org.jetbrains.kotlin.kapt'
+  alias libs.plugins.anvil
+  alias libs.plugins.ksp
 }
 
-dependencies {
-  implementation "androidx.annotation:annotation:${androidxAnnotationVersion}"
+anvil { generateDaggerFactories = true }
 
-  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:${coroutinesVersion}"
-  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${coroutinesVersion}"
+dependencies {
+  implementation libs.androidx.annotation
+
+  implementation libs.kotlinx.coroutines.core
+  implementation libs.kotlinx.coroutines.android
 
   // dagger
-  kapt deps.dagger.apt
-  implementation deps.dagger.runtime
+  implementation libs.dagger.runtime
 
-  implementation "com.squareup.moshi:moshi:${moshiVersion}"
-  kapt("com.squareup.moshi:moshi-kotlin-codegen:${moshiVersion}")
+  implementation libs.moshi
+  ksp(libs.moshi.codegen)
 }

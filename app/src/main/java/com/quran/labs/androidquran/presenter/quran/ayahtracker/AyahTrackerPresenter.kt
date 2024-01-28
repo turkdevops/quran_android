@@ -16,8 +16,9 @@ import com.quran.data.model.highlight.HighlightType
 import com.quran.data.model.selection.AyahSelection
 import com.quran.data.model.selection.SelectionIndicator
 import com.quran.data.model.selection.startSuraAyah
-import com.quran.labs.androidquran.common.LocalTranslation
 import com.quran.labs.androidquran.common.QuranAyahInfo
+import com.quran.labs.androidquran.common.audio.model.playback.currentPlaybackAyah
+import com.quran.labs.androidquran.common.audio.repository.AudioStatusRepository
 import com.quran.labs.androidquran.data.QuranDisplayData
 import com.quran.labs.androidquran.data.SuraAyahIterator
 import com.quran.labs.androidquran.presenter.Presenter
@@ -32,9 +33,9 @@ import com.quran.labs.androidquran.ui.helpers.HighlightTypes
 import com.quran.labs.androidquran.util.QuranFileUtils
 import com.quran.labs.androidquran.util.QuranSettings
 import com.quran.mobile.bookmark.model.BookmarkModel
+import com.quran.mobile.translation.model.LocalTranslation
 import com.quran.page.common.data.AyahCoordinates
 import com.quran.page.common.data.PageCoordinates
-import com.quran.reading.common.AudioEventPresenter
 import com.quran.reading.common.ReadingEventPresenter
 import com.quran.recitation.events.RecitationEventPresenter
 import com.quran.recitation.presenter.RecitationHighlightsPresenter
@@ -58,8 +59,8 @@ class AyahTrackerPresenter @Inject constructor(
   private val quranSettings: QuranSettings,
   private val readingEventPresenter: ReadingEventPresenter,
   private val bookmarkModel: BookmarkModel,
-  private val audioEventPresenter: AudioEventPresenter,
-  private val recitationPresenter: RecitationPresenter,
+  private val audioStatusRepository: AudioStatusRepository,
+  recitationPresenter: RecitationPresenter,
   private val recitationEventPresenter: RecitationEventPresenter,
   private val recitationPopupPresenter: RecitationPopupPresenter,
   private val recitationHighlightsPresenter: RecitationHighlightsPresenter,
@@ -81,8 +82,8 @@ class AyahTrackerPresenter @Inject constructor(
       .onEach { onAyahSelectionChanged(it) }
       .launchIn(scope)
 
-    audioEventPresenter.audioPlaybackAyahFlow
-      .onEach { onAudioSelectionChanged(it) }
+    audioStatusRepository.audioPlaybackFlow
+      .onEach { onAudioSelectionChanged(it.currentPlaybackAyah()) }
       .launchIn(scope)
 
     items.forEach { trackerItem ->
@@ -371,7 +372,7 @@ class AyahTrackerPresenter @Inject constructor(
   }
 
   override fun bind(what: AyahInteractionHandler) {
-    items = what.ayahTrackerItems
+    items = what.getAyahTrackerItems()
     scope = MainScope()
     if (isRecitationEnabled) {
       recitationPopupPresenter.bind(this)
@@ -390,7 +391,7 @@ class AyahTrackerPresenter @Inject constructor(
   }
 
   interface AyahInteractionHandler {
-    val ayahTrackerItems: Array<AyahTrackerItem>
+    fun getAyahTrackerItems(): Array<AyahTrackerItem>
   }
 
   // PopupContainer <--> AyahTrackerItem adapter

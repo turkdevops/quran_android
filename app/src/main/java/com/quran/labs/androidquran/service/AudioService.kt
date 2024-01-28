@@ -55,14 +55,16 @@ import android.support.v4.media.session.PlaybackStateCompat
 import android.util.SparseIntArray
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.core.math.MathUtils.clamp
 import androidx.media.session.MediaButtonReceiver
 import com.quran.data.core.QuranInfo
-import com.quran.data.model.SuraAyah
 import com.quran.labs.androidquran.QuranApplication
 import com.quran.labs.androidquran.R
+import com.quran.labs.androidquran.common.audio.model.playback.AudioRequest
+import com.quran.labs.androidquran.common.audio.model.playback.AudioStatus
+import com.quran.labs.androidquran.common.audio.model.playback.PlaybackStatus
+import com.quran.labs.androidquran.common.audio.repository.AudioStatusRepository
 import com.quran.labs.androidquran.dao.audio.AudioPlaybackInfo
-import com.quran.labs.androidquran.dao.audio.AudioRequest
 import com.quran.labs.androidquran.data.Constants
 import com.quran.labs.androidquran.data.QuranDisplayData
 import com.quran.labs.androidquran.data.QuranFileConstants
@@ -76,7 +78,6 @@ import com.quran.labs.androidquran.service.util.QuranDownloadNotifier
 import com.quran.labs.androidquran.ui.PagerActivity
 import com.quran.labs.androidquran.util.AudioUtils
 import com.quran.labs.androidquran.util.NotificationChannelUtil.setupNotificationChannel
-import com.quran.reading.common.AudioEventPresenter
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Maybe
 import io.reactivex.rxjava3.core.Single
@@ -97,17 +98,6 @@ import kotlin.math.abs
  */
 class AudioService : Service(), OnCompletionListener, OnPreparedListener,
   MediaPlayer.OnErrorListener, AudioFocusable, OnSeekCompleteListener {
-  object AudioUpdateIntent {
-    const val INTENT_NAME = "com.quran.labs.androidquran.audio.AudioUpdate"
-    const val STATUS = "status"
-    const val SURA = "sura"
-    const val AYAH = "ayah"
-    const val REPEAT_COUNT = "repeat_count"
-    const val REQUEST = "request"
-    const val STOPPED = 0
-    const val PLAYING = 1
-    const val PAUSED = 2
-  }
 
   // our media player
   private var player: MediaPlayer? = null
@@ -161,7 +151,6 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
 
   private lateinit var audioFocusHelper: AudioFocusHelper
   private lateinit var notificationManager: NotificationManager
-  private lateinit var broadcastManager: LocalBroadcastManager
   private lateinit var noisyAudioStreamReceiver: BroadcastReceiver
   private lateinit var mediaSession: MediaSessionCompat
 
@@ -192,7 +181,7 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
   lateinit var audioUtils: AudioUtils
 
   @Inject
-  lateinit var audioEventPresenter: AudioEventPresenter
+  lateinit var audioStatusRepository: AudioStatusRepository
 
   private inner class ServiceHandler(looper: Looper) : Handler(looper) {
     override fun handleMessage(msg: Message) {
@@ -232,6 +221,13 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
       localPlayer.setOnCompletionListener(this)
       localPlayer.setOnErrorListener(this)
       localPlayer.setOnSeekCompleteListener(this)
+
+      val audioAttributes = AudioAttributes.Builder()
+        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .build()
+      localPlayer.setAudioAttributes(audioAttributes)
+
       mediaSession.isActive = true
       localPlayer
     } else {
@@ -261,12 +257,15 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
 
     // create the Audio Focus Helper
     audioFocusHelper = AudioFocusHelper(appContext, this)
-    broadcastManager = LocalBroadcastManager.getInstance(appContext)
     noisyAudioStreamReceiver = NoisyAudioStreamReceiver()
-    registerReceiver(
+
+    ContextCompat.registerReceiver(
+      this,
       noisyAudioStreamReceiver,
-      IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+      IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+      ContextCompat.RECEIVER_EXPORTED
     )
+
     val receiver = ComponentName(this, MediaButtonReceiver::class.java)
     mediaSession = MediaSessionCompat(appContext, "QuranMediaSession", receiver, null)
     mediaSession.setCallback(MediaSessionCallback(), serviceHandler)
@@ -342,38 +341,14 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
       if (State.Stopped == state) {
         processStopRequest(true)
       } else {
-        var sura = -1
-        var ayah = -1
-        var repeatCount = -200
-        var state = AudioUpdateIntent.PLAYING
-        if (State.Paused == this.state) {
-          state = AudioUpdateIntent.PAUSED
-        }
-
-        val localAudioQueue = audioQueue
-        val localAudioRequest = audioRequest
-        if (localAudioQueue != null && localAudioRequest != null) {
-          sura = localAudioQueue.getCurrentSura()
-          ayah = localAudioQueue.getCurrentAyah()
-          repeatCount = localAudioRequest.repeatInfo
-        }
-
-        val updateIntent = Intent(AudioUpdateIntent.INTENT_NAME)
-        updateIntent.putExtra(AudioUpdateIntent.STATUS, state)
-        updateIntent.putExtra(AudioUpdateIntent.SURA, sura)
-        updateIntent.putExtra(AudioUpdateIntent.AYAH, ayah)
-        updateIntent.putExtra(AudioUpdateIntent.REPEAT_COUNT, repeatCount)
-        updateIntent.putExtra(AudioUpdateIntent.REQUEST,localAudioRequest)
-        broadcastManager.sendBroadcast(updateIntent)
+        updateAudioPlaybackStatus()
       }
     } else if (ACTION_PLAYBACK == action) {
       val updatedAudioRequest = intent.getParcelableExtra<AudioRequest>(EXTRA_PLAY_INFO)
       if (updatedAudioRequest != null) {
         audioRequest = updatedAudioRequest
         val start = updatedAudioRequest.start
-        audioEventPresenter.onAyahPlayback(start)
-        val basmallah = !updatedAudioRequest.isGapless() &&
-            start.requiresBasmallah()
+        val basmallah = !updatedAudioRequest.isGapless() && start.requiresBasmallah()
         audioQueue = AudioQueue(
           quranInfo, updatedAudioRequest,
           AudioPlaybackInfo(start, 1, 1, basmallah)
@@ -394,11 +369,15 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
       processStopRequest()
     } else if (ACTION_REWIND == action) {
       processRewindRequest()
-    } else if (ACTION_UPDATE_REPEAT == action) {
+    } else if (ACTION_UPDATE_SETTINGS == action) {
       val playInfo = intent.getParcelableExtra<AudioRequest>(EXTRA_PLAY_INFO)
       val localAudioQueue = audioQueue
       if (playInfo != null && localAudioQueue != null) {
         audioQueue = localAudioQueue.withUpdatedAudioRequest(playInfo)
+        if (playInfo.playbackSpeed != audioRequest?.playbackSpeed) {
+          processUpdatePlaybackSpeed(playInfo.playbackSpeed)
+          serviceHandler.sendEmptyMessageDelayed(MSG_UPDATE_AUDIO_POS, 200)
+        }
         audioRequest = playInfo
       }
     } else {
@@ -563,14 +542,16 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
       }
       notifyAyahChanged()
       if (maxAyahs >= updatedAyah + 1) {
-        var t = gaplessSuraData[updatedAyah + 1] - localPlayer.currentPosition
-        Timber.d("updateAudioPlayPosition postingDelayed after: %d", t)
-        if (t < 100) {
-          t = 100
-        } else if (t > 10000) {
-          t = 10000
-        }
-        serviceHandler.sendEmptyMessageDelayed(MSG_UPDATE_AUDIO_POS, t.toLong())
+        val timeDelta = gaplessSuraData[updatedAyah + 1] - localPlayer.currentPosition
+        val t = clamp(timeDelta, 100, 10000)
+        val tAccountingForSpeed = t / (audioRequest?.playbackSpeed ?: 1f)
+        Timber.d(
+          "updateAudioPlayPosition before: %d, after %f, speed: %f",
+          t,
+          tAccountingForSpeed,
+          audioRequest?.playbackSpeed
+        )
+        serviceHandler.sendEmptyMessageDelayed(MSG_UPDATE_AUDIO_POS, tAccountingForSpeed.toLong())
       } else if (maxAyahs == updatedAyah) {
         serviceHandler.sendEmptyMessageDelayed(MSG_UPDATE_AUDIO_POS, 150)
       }
@@ -616,7 +597,7 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
         setUpAsForeground()
       }
       configAndStartMediaPlayer(false)
-      notifyAudioStatus(AudioUpdateIntent.PLAYING)
+      updateAudioPlaybackStatus()
     }
   }
 
@@ -631,11 +612,12 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
       // update the notification.
       relaxResources(releaseMediaPlayer = false, stopForeground = false)
       pauseNotification()
-      notifyAudioStatus(AudioUpdateIntent.PAUSED)
+      updateAudioPlaybackStatus()
     } else if (State.Stopped == state) {
       // if we get a pause while we're already stopped, it means we likely woke up because
       // of AudioIntentReceiver, so just stop in this case.
       setState(PlaybackStateCompat.STATE_STOPPED)
+      updateAudioPlaybackStatus()
       stopSelf()
     }
   }
@@ -653,6 +635,7 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
         seekTo = getSeekPosition(true)
         pos -= seekTo
       }
+
       if (pos > 1500 && !playerOverride) {
         localPlayer.seekTo(seekTo)
         state = State.Playing // in case we were paused
@@ -670,6 +653,21 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
           return
         }
         playAudio()
+      }
+    }
+  }
+
+  private fun processUpdatePlaybackSpeed(speed: Float) {
+    if (State.Playing === state && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      try {
+        player?.playbackParams?.let { params ->
+          params.setSpeed(speed)
+          player?.playbackParams = params
+        }
+      } catch (e: Exception) {
+        // catch an Android 6 crash [IllegalStateException], and report the speed since some
+        // non-Android 6 devices also crash here, but with [IllegalArgumentException]
+        Timber.e(e, "Failed to set speed to $speed")
       }
     }
   }
@@ -713,6 +711,7 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
     }
     if (force || State.Stopped != state) {
       state = State.Stopped
+      updateAudioPlaybackStatus()
 
       // let go of all resources...
       relaxResources(releaseMediaPlayer = true, stopForeground = true)
@@ -724,25 +723,13 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
 
       // stop async task if it's running
       timingDisposable?.dispose()
-
-      // tell the ui we've stopped
-      audioEventPresenter.onAyahPlayback(null)
-      notifyAudioStatus(AudioUpdateIntent.STOPPED)
     }
   }
 
   private fun notifyAyahChanged() {
-    val localAudioQueue = audioQueue ?: return
     val localAudioRequest = audioRequest ?: return
+    updateAudioPlaybackStatus()
 
-    audioEventPresenter.onAyahPlayback(
-      SuraAyah(localAudioQueue.getCurrentSura(), localAudioQueue.getCurrentAyah())
-    )
-    val updateIntent = Intent(AudioUpdateIntent.INTENT_NAME)
-    updateIntent.putExtra(AudioUpdateIntent.STATUS, AudioUpdateIntent.PLAYING)
-    updateIntent.putExtra(AudioUpdateIntent.SURA, localAudioQueue.getCurrentSura())
-    updateIntent.putExtra(AudioUpdateIntent.AYAH, localAudioQueue.getCurrentAyah())
-    broadcastManager.sendBroadcast(updateIntent)
     val metadataBuilder = MediaMetadataCompat.Builder()
       .putString(MediaMetadataCompat.METADATA_KEY_TITLE, getTitle())
       .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, localAudioRequest.qari.name)
@@ -763,10 +750,30 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
     mediaSession.setMetadata(metadataBuilder.build())
   }
 
-  private fun notifyAudioStatus(status: Int) {
-    val updateIntent = Intent(AudioUpdateIntent.INTENT_NAME)
-    updateIntent.putExtra(AudioUpdateIntent.STATUS, status)
-    broadcastManager.sendBroadcast(updateIntent)
+  private fun updateAudioPlaybackStatus() {
+    val audioStatus = when (state) {
+      State.Stopped -> AudioStatus.Stopped
+      State.Playing, State.Preparing, State.Paused -> {
+        val localAudioQueue = audioQueue ?: return
+        val localAudioRequest = audioRequest ?: return
+
+        AudioStatus.Playback(
+          localAudioQueue.getCurrentPlaybackAyah(),
+          localAudioRequest,
+          state.asPlayingPlaybackStatus()
+        )
+      }
+    }
+    audioStatusRepository.updateAyahPlayback(audioStatus)
+  }
+
+  private fun State.asPlayingPlaybackStatus(): PlaybackStatus {
+    return when (this) {
+      State.Playing -> PlaybackStatus.PLAYING
+      State.Preparing -> PlaybackStatus.PREPARING
+      State.Paused -> PlaybackStatus.PAUSED
+      else -> throw IllegalStateException("State $this is not a playing state")
+    }
   }
 
   /**
@@ -853,6 +860,7 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
       if (!player.isPlaying) {
         player.start()
         state = State.Playing
+        updateAudioPlaybackStatus()
       }
       return
     }
@@ -876,6 +884,7 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
       }
       player.start()
       state = State.Playing
+      updateAudioPlaybackStatus()
     }
   }
 
@@ -914,10 +923,6 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
 
       val url = audioQueue?.getUrl()
       if (localAudioRequest == null || localAudioQueue == null || url == null) {
-        val updateIntent = Intent(AudioUpdateIntent.INTENT_NAME)
-        updateIntent.putExtra(AudioUpdateIntent.STATUS, AudioUpdateIntent.STOPPED)
-        audioEventPresenter.onAyahPlayback(null)
-        broadcastManager.sendBroadcast(updateIntent)
         processStopRequest(true) // stop everything!
         return
       }
@@ -926,11 +931,6 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
       if (!isStreaming) {
         val f = File(url)
         if (!f.exists()) {
-          val updateIntent = Intent(AudioUpdateIntent.INTENT_NAME)
-          updateIntent.putExtra(AudioUpdateIntent.STATUS, AudioUpdateIntent.STOPPED)
-          updateIntent.putExtra(EXTRA_PLAY_INFO, audioRequest)
-          audioEventPresenter.onAyahPlayback(null)
-          broadcastManager.sendBroadcast(updateIntent)
           processStopRequest(true)
           return
         }
@@ -984,12 +984,7 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
         localPlayer.setDataSource(url)
       }
       state = State.Preparing
-
-      val audioAttributes = AudioAttributes.Builder()
-        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-        .setUsage(AudioAttributes.USAGE_MEDIA)
-        .build()
-      localPlayer.setAudioAttributes(audioAttributes)
+      updateAudioPlaybackStatus()
 
       // starts preparing the media player in the background. When it's
       // done, it will call our OnPreparedListener (that is, the
@@ -1024,15 +1019,47 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
     }
     val builder = PlaybackStateCompat.Builder()
     builder.setState(state, position, 1.0f)
-    builder.setActions(
-      PlaybackStateCompat.ACTION_PLAY or
-          PlaybackStateCompat.ACTION_STOP or
-          PlaybackStateCompat.ACTION_REWIND or
-          PlaybackStateCompat.ACTION_FAST_FORWARD or
-          PlaybackStateCompat.ACTION_PAUSE or
-          PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-          PlaybackStateCompat.ACTION_SKIP_TO_NEXT
-    )
+
+    val actions = when (state) {
+      PlaybackStateCompat.STATE_PLAYING -> {
+        PlaybackStateCompat.ACTION_PAUSE or
+            PlaybackStateCompat.ACTION_STOP or
+            PlaybackStateCompat.ACTION_REWIND or
+            PlaybackStateCompat.ACTION_FAST_FORWARD or
+            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+            PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+      }
+      PlaybackStateCompat.STATE_PAUSED -> {
+        PlaybackStateCompat.ACTION_PLAY or
+            PlaybackStateCompat.ACTION_STOP or
+            PlaybackStateCompat.ACTION_REWIND or
+            PlaybackStateCompat.ACTION_FAST_FORWARD or
+            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+            PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+      }
+      PlaybackStateCompat.STATE_STOPPED -> {
+        PlaybackStateCompat.ACTION_PLAY
+      }
+      PlaybackStateCompat.STATE_CONNECTING -> {
+        PlaybackStateCompat.ACTION_STOP
+      }
+      PlaybackStateCompat.STATE_REWINDING -> {
+        PlaybackStateCompat.ACTION_STOP or
+            PlaybackStateCompat.ACTION_REWIND or
+            PlaybackStateCompat.ACTION_FAST_FORWARD or
+            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+            PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+      }
+      PlaybackStateCompat.STATE_SKIPPING_TO_NEXT -> {
+        PlaybackStateCompat.ACTION_STOP or
+            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+            PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+            PlaybackStateCompat.ACTION_FAST_FORWARD or
+            PlaybackStateCompat.ACTION_REWIND
+      }
+      else -> { PlaybackStateCompat.ACTION_STOP }
+    }
+    builder.setActions(actions)
     mediaSession.setPlaybackState(builder.build())
   }
 
@@ -1044,6 +1071,10 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
     )
     player.start()
     state = State.Playing
+    updateAudioPlaybackStatus()
+    audioRequest?.playbackSpeed?.let { speed ->
+      processUpdatePlaybackSpeed(speed)
+    }
     serviceHandler.sendEmptyMessageDelayed(MSG_UPDATE_AUDIO_POS, 200)
   }
 
@@ -1297,6 +1328,7 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
   override fun onError(mp: MediaPlayer, what: Int, extra: Int): Boolean {
     Timber.e("Error: what=%s, extra=%s", what.toString(), extra.toString())
     state = State.Stopped
+    updateAudioPlaybackStatus()
     relaxResources(releaseMediaPlayer = true, stopForeground = true)
     giveUpAudioFocus()
     return true // true indicates we handled the error
@@ -1347,10 +1379,7 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
   }
 
   companion object {
-    // These are the Intent actions that we are prepared to handle. Notice that
-    // the fact these constants exist in our class is a mere convenience: what
-    // really defines the actions our service can handle are the <action> tags
-    // in the <intent-filters> tag for our service in AndroidManifest.xml.
+    // These are the Intent actions that we are prepared to handle.
     const val ACTION_PLAYBACK = "com.quran.labs.androidquran.action.PLAYBACK"
     const val ACTION_PLAY = "com.quran.labs.androidquran.action.PLAY"
     const val ACTION_PAUSE = "com.quran.labs.androidquran.action.PAUSE"
@@ -1358,7 +1387,7 @@ class AudioService : Service(), OnCompletionListener, OnPreparedListener,
     const val ACTION_SKIP = "com.quran.labs.androidquran.action.SKIP"
     const val ACTION_REWIND = "com.quran.labs.androidquran.action.REWIND"
     const val ACTION_CONNECT = "com.quran.labs.androidquran.action.CONNECT"
-    const val ACTION_UPDATE_REPEAT = "com.quran.labs.androidquran.action.UPDATE_REPEAT"
+    const val ACTION_UPDATE_SETTINGS = "com.quran.labs.androidquran.action.UPDATE_SETTINGS"
 
     // pending notification request codes
     private const val REQUEST_CODE_MAIN = 0

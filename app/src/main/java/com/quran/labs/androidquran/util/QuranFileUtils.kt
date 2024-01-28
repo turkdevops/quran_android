@@ -14,6 +14,7 @@ import com.quran.labs.androidquran.BuildConfig
 import com.quran.labs.androidquran.common.Response
 import com.quran.labs.androidquran.data.QuranDataProvider
 import com.quran.labs.androidquran.extension.closeQuietly
+import com.quran.mobile.di.qualifier.ApplicationContext
 import okhttp3.OkHttpClient
 import okhttp3.Request.Builder
 import okhttp3.ResponseBody
@@ -35,7 +36,7 @@ import java.util.Locale
 import javax.inject.Inject
 
 class QuranFileUtils @Inject constructor(
-  context: Context,
+  @ApplicationContext context: Context,
   pageProvider: PageProvider,
   private val quranScreenInfo: QuranScreenInfo
 ): QuranFileManager {
@@ -248,6 +249,30 @@ class QuranFileUtils @Inject constructor(
       dir.mkdirs()
     }
     copyFromAssets(assetsPath, filename, actualDestination)
+  }
+
+  override fun copyFromAssetsRelativeRecursive(
+    assetsPath: String,
+    directory: String,
+    destination: String
+  ) {
+    val destinationPath = File(getQuranBaseDirectory(appContext) + destination)
+    val directoryDestinationPath = File(destinationPath, directory)
+    if (!directoryDestinationPath.exists()) {
+      directoryDestinationPath.mkdirs()
+    }
+
+    val assets = appContext.assets
+    val files = assets.list(assetsPath) ?: emptyArray()
+    val destinationDirectory = "$destination${File.separator}$directory"
+    files.forEach {
+      val path = "$assetsPath${File.separator}$it"
+      if (assets.list(path)?.isNotEmpty() == true) {
+        copyFromAssetsRelativeRecursive(path, it, destinationDirectory)
+      } else {
+        copyFromAssetsRelative(path, it, destinationDirectory)
+      }
+    }
   }
 
   @WorkerThread

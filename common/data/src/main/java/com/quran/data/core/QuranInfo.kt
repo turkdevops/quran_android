@@ -4,6 +4,7 @@ import com.quran.data.core.QuranConstants.LAST_SURA
 import com.quran.data.core.QuranConstants.MAX_AYAH
 import com.quran.data.core.QuranConstants.MIN_AYAH
 import com.quran.data.core.QuranConstants.NUMBER_OF_SURAS
+import com.quran.data.core.QuranConstants.PAGES_FIRST
 import com.quran.data.model.SuraAyah
 import com.quran.data.model.VerseRange
 import com.quran.data.source.QuranDataSource
@@ -19,10 +20,15 @@ class QuranInfo @Inject constructor(quranDataSource: QuranDataSource) {
   private val pageRub3Start = quranDataSource.quarterStartByPage
   private val suraNumAyahs = quranDataSource.numberOfAyahsForSuraArray
   private val suraIsMakki = quranDataSource.isMakkiBySuraArray
+  private val manazil = quranDataSource.manzilPageArray
   val quarters = quranDataSource.quartersArray
 
+  val skip = quranDataSource.pagesToSkip
+  private val firstPage = PAGES_FIRST + skip
+
   val numberOfPages = quranDataSource.numberOfPages
-  val numberOfPagesDual = numberOfPages / 2 + numberOfPages % 2
+  val numberOfPagesConsideringSkipped = numberOfPages - skip
+  private val numberOfPagesDual = numberOfPagesConsideringSkipped / 2 + numberOfPagesConsideringSkipped % 2
 
   fun getStartingPageForJuz(juz: Int): Int {
     return juzPageStart[juz - 1]
@@ -30,6 +36,19 @@ class QuranInfo @Inject constructor(quranDataSource: QuranDataSource) {
 
   fun getPageNumberForSura(sura: Int): Int {
     return suraPageStart[sura - 1]
+  }
+
+  fun manzilForPage(page: Int): Int {
+    val manzil = manazil.indexOfFirst { it > page }
+    return if (manzil == -1 && manazil.isNotEmpty() && page >= manazil.last()) {
+      manazil.size
+    } else {
+      manzil
+    }
+  }
+
+  fun isValidPage(page: Int): Boolean {
+    return page in firstPage..numberOfPages
   }
 
   fun getSuraNumberFromPage(page: Int): Int {
@@ -73,7 +92,7 @@ class QuranInfo @Inject constructor(quranDataSource: QuranDataSource) {
     val page =
       when {
         inputPage > numberOfPages -> numberOfPages
-        inputPage < 1 -> 1
+        inputPage < firstPage -> firstPage
         else -> inputPage
       }
 
@@ -173,9 +192,12 @@ class QuranInfo @Inject constructor(quranDataSource: QuranDataSource) {
     isDualPagesVisible: Boolean
   ): Int {
     return if (isDualPagesVisible) {
-      (numberOfPagesDual - position) * 2
+      // return the "first" page in a tablet view
+      // i.e. for [page 2][page 1] should return [page 1].
+      // similarly, for Naskh, [page 3][page 2] should return [page 2].
+      return (((numberOfPagesDual - position) * 2) + skip) - 1
     } else {
-      numberOfPages - position
+      (numberOfPagesConsideringSkipped - position) + skip
     }
   }
 
@@ -185,9 +207,32 @@ class QuranInfo @Inject constructor(quranDataSource: QuranDataSource) {
   ): Int {
     return if (isDualPagesVisible) {
       val pageToUse = if (page % 2 != 0) { page + 1 } else { page }
-      numberOfPagesDual - pageToUse / 2
+      val delta = if (page % 2 != 0) { skip } else 0
+      numberOfPagesDual - pageToUse / 2 + delta
     } else {
-      numberOfPages - page
+      (numberOfPagesConsideringSkipped - page) + skip
+    }
+  }
+
+  fun mapDualPageToSinglePage(page: Int): Int {
+    // selects the "first" page when mapping this dual page to a single page
+    // i.e. maps "left | right" => "right" (i.e. to first landscape page)
+    val amount = skip % 2
+    return if (page % 2 == amount) {
+      page - 1
+    } else {
+      page
+    }
+  }
+
+  fun mapSinglePageToDualPage(page: Int): Int {
+    // selects the "second" page when viewing this page by another
+    // i.e. "left | right" => "left" irrespective of which is chosen, left/right
+    val amount = skip % 2
+    return if (page % 2 != amount) {
+      page + 1
+    } else {
+      page
     }
   }
 

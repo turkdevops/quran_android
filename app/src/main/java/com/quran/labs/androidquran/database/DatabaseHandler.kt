@@ -84,7 +84,7 @@ class DatabaseHandler private constructor(
         ContextCompat.getColor(context, R.color.translation_highlight) +
         "\">"
     defaultSearcher = DefaultSearcher(matchString, MATCH_END, ELLIPSES)
-    arabicSearcher = ArabicSearcher(defaultSearcher, matchString, MATCH_END, QuranFileConstants.SEARCH_EXTRA_REPLACEMENTS)
+    arabicSearcher = ArabicSearcher(defaultSearcher, matchString, MATCH_END)
 
     // if there's no Quran base directory, there are no databases
     val base = quranFileUtils.getQuranDatabaseDirectory(context)
@@ -116,10 +116,6 @@ class DatabaseHandler private constructor(
   }
 
   fun validDatabase(): Boolean = database?.isOpen ?: false
-
-  private fun getVerses(sura: Int, minAyah: Int, maxAyah: Int): Cursor? {
-    return getVerses(sura, minAyah, maxAyah, VERSE_TABLE)
-  }
 
   private fun getProperty(column: String): Int {
     var value = 1
@@ -282,16 +278,6 @@ class DatabaseHandler private constructor(
       whereQuery.toString(), null, null, null,
       "$COL_SURA,$COL_AYAH"
     )
-  }
-
-  /**
-   * @deprecated use {@link #getVerses(VerseRange, int)} instead
-   * @param sura the sura
-   * @param ayah the ayah
-   * @return the result
-   */
-  fun getVerse(sura: Int, ayah: Int): Cursor? {
-    return getVerses(sura, ayah, ayah)
   }
 
   fun getVersesByIds(ids: List<Int>): Cursor? {

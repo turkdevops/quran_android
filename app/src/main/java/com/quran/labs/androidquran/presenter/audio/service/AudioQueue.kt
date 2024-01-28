@@ -2,7 +2,7 @@ package com.quran.labs.androidquran.presenter.audio.service
 
 import com.quran.data.core.QuranInfo
 import com.quran.labs.androidquran.dao.audio.AudioPlaybackInfo
-import com.quran.labs.androidquran.dao.audio.AudioRequest
+import com.quran.labs.androidquran.common.audio.model.playback.AudioRequest
 import com.quran.data.model.SuraAyah
 import com.quran.labs.androidquran.extension.requiresBasmallah
 import java.util.Locale
@@ -55,6 +55,7 @@ class AudioQueue(private val quranInfo: QuranInfo,
 
   fun getCurrentSura() = playbackInfo.currentAyah.sura
   fun getCurrentAyah() = playbackInfo.currentAyah.ayah
+  fun getCurrentPlaybackAyah() = playbackInfo.currentAyah
 
   fun playNextAyah(skipAyahRepeat: Boolean = false): Boolean {
     if (playbackInfo.shouldPlayBasmallah) {

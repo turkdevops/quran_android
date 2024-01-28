@@ -1,12 +1,13 @@
 plugins {
   id 'quran.android.library'
-  id 'org.jetbrains.kotlin.kapt'
+  alias libs.plugins.anvil
 }
 
-dependencies {
-  kapt deps.dagger.apt
-  implementation deps.dagger.runtime
+anvil { generateDaggerFactories = true }
 
-  implementation 'dnsjava:dnsjava:2.1.9'
-  implementation "com.squareup.okhttp3:okhttp-dnsoverhttps"
+dependencies {
+  implementation libs.dagger.runtime
+
+  implementation libs.dnsjava
+  implementation libs.okhttp.dnsoverhttps
 }
